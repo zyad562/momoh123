@@ -4,10 +4,30 @@ const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const express = require('express');
 
-// سيرفر الويب لمنع توقف الاستضافة (Keep Alive)
 const app = express();
-const port = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot is Alive!'));
+const port = process.env.PORT || 8000;
+let lastQR = null; // لتخزين الرمز وإظهاره في المتصفح
+
+// سيرفر الويب المطور
+app.get('/', (req, res) => {
+    if (lastQR) {
+        // إذا لم يظهر في التيرمنال، سيظهر لك هنا عند فتح الرابط
+        res.send(`
+            <html>
+                <body style="text-align:center; background:#f0f0f0; font-family:sans-serif;">
+                    <h2>سيرفر ماجه - امسح الرمز للربط</h2>
+                    <p>إذا لم يظهر الرمز في Koyeb، امسحه من هنا:</p>
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(lastQR)}&size=300x300" />
+                    <br><br>
+                    <p>الحالة: البوت ينتظر المسح...</p>
+                </body>
+            </html>
+        `);
+    } else {
+        res.send('البوت يعمل بنجاح! الحالة: متصل أو يتم توليد الرمز...');
+    }
+});
+
 app.listen(port, () => console.log(`Server is running on port ${port}`));
 
 const prayers = [
@@ -23,20 +43,26 @@ async function startBot() {
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true, // سيظهر الـ QR في Console الخاص بـ Koyeb
-        logger: pino({ level: 'silent' })
+        printQRInTerminal: true,
+        logger: pino({ level: 'silent' }),
+        browser: ['Majeh System', 'Chrome', '1.0.0'] // تعريف البوت للسيرفر
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
+        
         if (qr) {
+            lastQR = qr; // حفظ الرمز لإظهاره في المتصفح
             console.log('--- امسح الرمز أدناه للربط ---');
             qrcode.generate(qr, { small: true });
         }
+
         if (connection === 'close') {
+            lastQR = null;
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
+            lastQR = null; // حذف الرمز بعد النجاح
             console.log('--- البوت متصل وشغال بنجاح! ---');
         }
     });
